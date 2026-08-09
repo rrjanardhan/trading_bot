@@ -1,174 +1,175 @@
 from kiteconnect import KiteConnect
-import json
-import webbrowser
+from getpass import getpass
+import pandas as pd
 from datetime import datetime
 
-class ZerodhaMobileAuth:
-    def __init__(self, api_key, api_secret):
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.kite = KiteConnect(api_key=api_key)
+class ZerodhaBroker:
+    def __init__(self):
+        """Initialize without credentials"""
+        self.api_key = None
+        self.api_secret = None
         self.access_token = None
-    
-    def login_via_mobile(self):
-        """Login using mobile Kite app"""
+        self.kite = None
+        
+    def interactive_login(self):
+        """Complete interactive login - NOTHING saved"""
         print("\n" + "="*60)
-        print("📱 ZERODHA MOBILE LOGIN")
+        print("🔐 INTERACTIVE ZERODHA LOGIN")
         print("="*60)
         
-        # Step 1: Generate login URL
+        # Step 1: Get API credentials
+        print("\n📝 Step 1: Enter API Credentials")
+        self.api_key = getpass("🔑 API Key: ")
+        self.api_secret = getpass("🔐 API Secret: ")
+        
+        if not self.api_key or not self.api_secret:
+            print("❌ Credentials required!")
+            return False
+        
+        # Step 2: Generate login URL
+        self.kite = KiteConnect(api_key=self.api_key)
         login_url = self.kite.login_url()
         
-        print("\n📋 OPTION 1: Direct Login Link")
+        print("\n📱 Step 2: Login via Mobile")
         print("-"*40)
         print(f"Open this link on your phone:")
         print(f"\n{login_url}\n")
-        
-        print("\n📋 OPTION 2: QR Code Method")
+        print("After login, copy the ENTIRE URL from browser")
         print("-"*40)
-        print("1. Open Kite app on your phone")
-        print("2. Go to Profile → API Connections")
-        print("3. Tap 'Connect New App'")
-        print("4. Scan QR code or enter API Key manually")
-        print(f"\nYour API Key: {self.api_key}")
         
-        print("\n" + "="*60)
-        print("After logging in:")
-        print("1. You'll be redirected to a page")
-        print("2. Copy the ENTIRE URL from browser")
-        print("3. Paste it below")
-        print("="*60)
+        # Step 3: Get request token
+        redirect_url = input("\n📎 Paste redirect URL: ").strip()
         
-        # Get request token from URL
-        full_url = input("\n📎 Paste the full redirect URL: ").strip()
-        
-        # Extract request_token from URL
         try:
-            if 'request_token=' in full_url:
-                request_token = full_url.split('request_token=')[1].split('&')[0]
-                
-                # Add # if needed
-                if ' ' in request_token:
-                    request_token = request_token.split(' ')[0]
-                
-                print(f"\n✅ Request token extracted: {request_token[:20]}...")
-                
-                # Generate session
-                return self.generate_session(request_token)
-            else:
-                print("❌ Could not find request_token in URL")
-                return False
-                
-        except Exception as e:
-            print(f"❌ Error: {e}")
+            request_token = redirect_url.split('request_token=')[1]
+            if '&' in request_token:
+                request_token = request_token.split('&')[0]
+        except:
+            print("❌ Invalid URL! Could not find request token")
             return False
-    
-    def generate_session(self, request_token):
-        """Generate access token"""
+        
+        # Step 4: Generate session
         try:
-            data = self.kite.generate_session(request_token, api_secret=self.api_secret)
-            self.access_token = data["access_token"]
+            print("\n🔄 Generating session...")
+            session = self.kite.generate_session(
+                request_token, 
+                api_secret=self.api_secret
+            )
             
-            # Save session
-            session_data = {
-                'access_token': self.access_token,
-                'api_key': self.api_key,
-                'user_name': data['user_name'],
-                'email': data['email'],
-                'user_id': data['user_id'],
-                'login_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
-            
-            with open('zerodha_session.json', 'w') as f:
-                json.dump(session_data, f, indent=2)
+            self.access_token = session['access_token']
+            self.kite.set_access_token(self.access_token)
             
             print("\n" + "="*60)
             print("✅ LOGIN SUCCESSFUL!")
             print("="*60)
-            print(f"Welcome, {data['user_name']}")
-            print(f"Email: {data['email']}")
-            print(f"User ID: {data['user_id']}")
-            print(f"Access Token: {self.access_token[:20]}...")
-            print("\n💾 Session saved to zerodha_session.json")
+            print(f"👤 User: {session['user_name']}")
+            print(f"📧 Email: {session['email']}")
+            print(f"🏢 Broker: {session['broker']}")
+            print(f"🆔 User ID: {session['user_id']}")
             print("="*60)
+            
+            # Show account balance
+            self.show_balance()
             
             return True
             
         except Exception as e:
-            print(f"❌ Session generation failed: {e}")
+            print(f"\n❌ Login failed: {e}")
             return False
     
-    def login_with_saved_session(self):
-        """Login using previously saved session"""
+    def show_balance(self):
+        """Display account balance"""
         try:
-            with open('zerodha_session.json', 'r') as f:
-                data = json.load(f)
+            margins = self.kite.margins()
+            equity = margins['equity']
             
-            self.access_token = data['access_token']
-            self.kite.set_access_token(self.access_token)
+            print("\n💰 ACCOUNT BALANCE:")
+            print(f"   Available: ₹{equity['available']['live_balance']:,.2f}")
+            print(f"   Used Margin: ₹{equity['utilised']['debits']:,.2f}")
+            print(f"   Opening Balance: ₹{equity['available']['opening_balance']:,.2f}")
             
-            # Verify token is still valid
-            try:
-                profile = self.kite.profile()
-                print(f"\n✅ Auto-login successful!")
-                print(f"Welcome back, {profile['user_name']}")
-                return True
-            except:
-                print("\n⚠️  Session expired. Please login again.")
-                return False
+        except Exception as e:
+            print(f"❌ Could not fetch balance: {e}")
+    
+    def place_order(self, symbol, quantity, transaction_type, product="CNC"):
+        """Place order - requires active login"""
+        if not self.kite or not self.access_token:
+            print("❌ Login first!")
+            return None
+        
+        try:
+            # Confirm order
+            print(f"\n📋 ORDER CONFIRMATION:")
+            print(f"   Symbol: {symbol}")
+            print(f"   Action: {transaction_type}")
+            print(f"   Quantity: {quantity}")
+            print(f"   Product: {product}")
+            
+            # Get current price
+            ltp = self.kite.ltp(f"NSE:{symbol}")
+            price = ltp[f"NSE:{symbol}"]['last_price']
+            value = price * quantity
+            print(f"   Current Price: ₹{price:,.2f}")
+            print(f"   Total Value: ₹{value:,.2f}")
+            
+            # Confirm
+            confirm = input("\n⚠️  Confirm order? (yes/no): ").strip().lower()
+            
+            if confirm != 'yes':
+                print("❌ Order cancelled")
+                return None
+            
+            # Place order
+            order_id = self.kite.place_order(
+                variety="regular",
+                exchange="NSE",
+                tradingsymbol=symbol,
+                transaction_type=transaction_type,
+                quantity=quantity,
+                product=product,
+                order_type="MARKET"
+            )
+            
+            print(f"\n✅ ORDER PLACED!")
+            print(f"   Order ID: {order_id}")
+            print(f"   {transaction_type} {quantity} {symbol} @ ₹{price:,.2f}")
+            
+            return order_id
+            
+        except Exception as e:
+            print(f"❌ Order failed: {e}")
+            return None
+    
+    def get_positions(self):
+        """Get current positions"""
+        try:
+            positions = self.kite.positions()
+            
+            print("\n📊 CURRENT POSITIONS:")
+            if positions['net']:
+                total_pnl = 0
+                for pos in positions['net']:
+                    pnl = pos['pnl']
+                    total_pnl += pnl
+                    emoji = "🟢" if pnl >= 0 else "🔴"
+                    print(f"   {emoji} {pos['tradingsymbol']}: {pos['quantity']} shares")
+                    print(f"      Avg: ₹{pos['average_price']:,.2f} | P&L: ₹{pnl:,.2f}")
                 
-        except FileNotFoundError:
-            print("\n⚠️  No saved session found.")
-            return False
-    
-    def show_qr_code(self):
-        """Show QR code for mobile app connection"""
-        print("\n📱 SCAN THIS QR CODE WITH KITE APP:")
-        print("-"*40)
-        
-        # Generate QR code text
-        qr_text = f"kite://connect?api_key={self.api_key}"
-        
-        try:
-            # Try to generate QR code
-            import qrcode
-            qr = qrcode.QRCode(version=1, box_size=10, border=5)
-            qr.add_data(qr_text)
-            qr.make(fit=True)
+                print(f"\n   💰 Total P&L: ₹{total_pnl:,.2f}")
+            else:
+                print("   No open positions")
             
-            # Print QR in terminal
-            qr.print_ascii()
+            return positions
             
-        except ImportError:
-            print("Install qrcode: pip install qrcode[pil]")
-            print(f"\nOr manually enter this API Key in Kite app:")
-            print(f"API Key: {self.api_key}")
-        
-        print("-"*40)
-
-
-# Simple test
-if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("📱 ZERODHA MOBILE CONNECTION")
-    print("="*60)
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            return None
     
-    API_KEY = input("Enter your API Key: ").strip()
-    API_SECRET = input("Enter your API Secret: ").strip()
-    
-    auth = ZerodhaMobileAuth(API_KEY, API_SECRET)
-    
-    # Try saved session first
-    if not auth.login_with_saved_session():
-        # New login via mobile
-        print("\nChoose login method:")
-        print("1. Open link in mobile browser")
-        print("2. Use Kite mobile app")
-        
-        choice = input("Choice (1-2): ").strip()
-        
-        if choice == "1":
-            auth.login_via_mobile()
-        elif choice == "2":
-            auth.show_qr_code()
-            auth.login_via_mobile()
+    def logout(self):
+        """Clear session and credentials"""
+        self.api_key = None
+        self.api_secret = None
+        self.access_token = None
+        self.kite = None
+        print("\n🔒 Logged out successfully")
+        print("   All credentials cleared from memory")
