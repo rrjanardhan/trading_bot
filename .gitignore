@@ -1,6 +1,12 @@
+# Added to prevent committing sensitive session files
+kite_session.json
+.env
+.pytest_cache/
+.venv/
+
+# Existing entries
 __pycache__/
 *.pyc
-.env
 trades.json
 *.log
 .DS_Store
