@@ -24,12 +24,17 @@ class DataFetcher:
             return None
     
     @staticmethod
+        @staticmethod
     def get_live_price(symbol):
-        """Get current price for a symbol"""
+        """Get current price for a symbol (returns native Python float or None)"""
         try:
             ticker = yf.Ticker(symbol)
-            price = ticker.history(period="1d")['Close'].iloc[-1]
-            return round(price, 2)
+            df = ticker.history(period="1d")
+            if df is None or df.empty:
+                return None
+            latest = df['Close'].iloc[-1]
+            # Coerce numpy scalars to native Python float for consistency
+            return float(latest)
         except Exception as e:
             print(f"❌ Error fetching live price: {e}")
             return None
