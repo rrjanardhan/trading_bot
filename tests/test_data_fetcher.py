@@ -1,4 +1,5 @@
 import pandas as pd
+import numbers
 
 from src.utils.data_fetcher import DataFetcher
 
@@ -41,7 +42,8 @@ def test_get_historical_and_live(monkeypatch):
     assert len(df) == 5
 
     price = DataFetcher.get_live_price('DUMMY')
-    assert isinstance(price, float) or isinstance(price, int)
+    # Accept any numeric type (int, float, numpy.number, Decimal, etc.)
+    assert isinstance(price, numbers.Number)
 
     info = DataFetcher.get_company_info('DUMMY')
     assert info['Name'] == 'Dummy Corp'
